@@ -1,3 +1,4 @@
+#include <consts.hpp>
 #include <base.hpp>
 
 #include "policy.hpp"
@@ -18,14 +19,18 @@ void sepolicy::magisk_rules() {
     typeattribute(SEPOL_PROC_DOMAIN, "bluetoothdomain");
     type(SEPOL_FILE_TYPE, "file_type");
     typeattribute(SEPOL_FILE_TYPE, "mlstrustedobject");
+    type(SEPOL_LOG_TYPE, "file_type");
+    typeattribute(SEPOL_LOG_TYPE, "mlstrustedobject");
 
     // Make our root domain unconstrained
     allow(SEPOL_PROC_DOMAIN, ALL, ALL, ALL);
     // Allow us to do any ioctl
     if (impl->db->policyvers >= POLICYDB_VERSION_XPERMS_IOCTL) {
-        allowxperm(SEPOL_PROC_DOMAIN, ALL, "blk_file", ALL_XPERM);
-        allowxperm(SEPOL_PROC_DOMAIN, ALL, "fifo_file", ALL_XPERM);
-        allowxperm(SEPOL_PROC_DOMAIN, ALL, "chr_file", ALL_XPERM);
+        argument all;
+        all.first.push_back(nullptr);
+        allowxperm(SEPOL_PROC_DOMAIN, ALL, "blk_file", all);
+        allowxperm(SEPOL_PROC_DOMAIN, ALL, "fifo_file", all);
+        allowxperm(SEPOL_PROC_DOMAIN, ALL, "chr_file", all);
     }
 
     // Create unconstrained file type
@@ -36,10 +41,17 @@ void sepolicy::magisk_rules() {
     allow(ALL, SEPOL_FILE_TYPE, "lnk_file", ALL);
     allow(ALL, SEPOL_FILE_TYPE, "sock_file", ALL);
 
-    // Allow these processes to access MagiskSU
-    const char *clients[]{"zygote", "shell",
-                          "system_app", "platform_app", "priv_app",
-                          "untrusted_app", "untrusted_app_all"};
+    // Only allow zygote to open log pipe
+    allow("zygote", SEPOL_LOG_TYPE, "fifo_file", "open");
+    allow("zygote", SEPOL_LOG_TYPE, "fifo_file", "read");
+    // Allow all processes to output logs
+    allow("domain", SEPOL_LOG_TYPE, "fifo_file", "write");
+
+    // Allow these processes to access MagiskSU and output logs
+    const char *clients[] {
+        "zygote", "shell", "system_app", "platform_app",
+        "priv_app", "untrusted_app", "untrusted_app_all"
+    };
     for (auto type: clients) {
         if (!exists(type))
             continue;
@@ -104,7 +116,6 @@ void sepolicy::magisk_rules() {
     allow("rootfs", "tmpfs", "filesystem", "associate");
 
     // Zygisk rules
-    allow("zygote", "zygote", "capability", "sys_resource");  // prctl PR_SET_MM
     allow("zygote", "zygote", "process", "execmem");
     allow("zygote", "fs_type", "filesystem", "unmount");
     allow("system_server", "system_server", "process", "execmem");

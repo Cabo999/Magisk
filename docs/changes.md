@@ -1,5 +1,24 @@
 # Magisk Changelog
 
+### v27.0
+
+- [Zygisk] Introduce new code injection mechanism
+- [Zygisk] Support new signature introduced in U QPR2
+- [SEPolicy] Update libsepol to properly set some policy config bits
+- [MagiskBoot] Support compressing `init` so Magisk is installable on devices with small boot partitions
+- [ResetProp] Add new wait for property feature `resetprop -w`
+
+### v26.4
+
+- [MagiskBoot] Don't pad zeros if signed boot image is larger
+- [MagiskPolicy] Fix `genfscon` and `filename_trans`
+- [MagiskPolicy] Fix bug in `libsepol`
+- [Zygisk] Fix and simplify file descriptor sanitization logic
+- [App] Prevent OOM when patching AP tarfiles
+- [App] Fix bug in device configuration detection
+- [Daemon] Fix certificate parsing of APKs
+- [General] Fix logging errors from C++ code being ignored
+
 ### v26.3
 
 - [General] Fix device information detection script

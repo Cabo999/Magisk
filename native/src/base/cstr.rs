@@ -2,13 +2,16 @@ use std::cmp::min;
 use std::ffi::{CStr, FromBytesWithNulError, OsStr};
 use std::fmt::{Arguments, Debug, Display, Formatter, Write};
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::{Utf8Chunks, Utf8Error};
 use std::{fmt, mem, slice, str};
+use std::os::unix::ffi::OsStrExt;
 
-use crate::slice_from_ptr_mut;
+use cxx::{type_id, ExternType};
 use libc::c_char;
 use thiserror::Error;
+
+use crate::slice_from_ptr_mut;
 
 // Utf8CStr types are UTF-8 validated and null terminated strings.
 //
@@ -103,7 +106,7 @@ trait AsUtf8CStr {
 
 // Implementation for Utf8CString
 
-trait StringExt {
+pub trait StringExt {
     fn nul_terminate(&mut self) -> &mut [u8];
 }
 
@@ -115,6 +118,21 @@ impl StringExt for String {
         unsafe {
             let buf = slice::from_raw_parts_mut(self.as_mut_ptr(), self.len() + 1);
             *buf.get_unchecked_mut(self.len()) = b'\0';
+            buf
+        }
+    }
+}
+
+impl StringExt for PathBuf {
+    #[allow(mutable_transmutes)]
+    fn nul_terminate(&mut self) -> &mut [u8] {
+        self.reserve(1);
+        // SAFETY: the PathBuf is reserved to have enough capacity to fit in the null byte
+        // SAFETY: the null byte is explicitly added outside of the PathBuf's length
+        unsafe {
+            let bytes: &mut [u8] = mem::transmute(self.as_mut_os_str().as_bytes());
+            let buf = slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len() + 1);
+            *buf.get_unchecked_mut(bytes.len()) = b'\0';
             buf
         }
     }
@@ -284,6 +302,7 @@ pub enum StrErr {
 }
 
 // UTF-8 validated + null terminated string slice
+#[repr(transparent)]
 pub struct Utf8CStr([u8]);
 
 impl Utf8CStr {
@@ -379,18 +398,35 @@ impl DerefMut for Utf8CStr {
     }
 }
 
+// Notice that we only implement ExternType on Utf8CStr *reference*
+unsafe impl ExternType for &Utf8CStr {
+    type Id = type_id!("rust::Utf8CStr");
+    type Kind = cxx::kind::Trivial;
+}
+
+macro_rules! const_assert_eq {
+    ($left:expr, $right:expr $(,)?) => {
+        const _: [(); $left] = [(); $right];
+    };
+}
+
+// Assert ABI layout
+const_assert_eq!(mem::size_of::<&Utf8CStr>(), mem::size_of::<[usize; 2]>());
+const_assert_eq!(mem::align_of::<&Utf8CStr>(), mem::align_of::<[usize; 2]>());
+
 // File system path extensions types
 
+#[repr(transparent)]
 pub struct FsPath(Utf8CStr);
 
 impl FsPath {
     #[inline(always)]
-    pub fn from<'a, T: AsRef<Utf8CStr>>(value: T) -> &'a FsPath {
+    pub fn from<T: AsRef<Utf8CStr> + ?Sized>(value: &T) -> &FsPath {
         unsafe { mem::transmute(value.as_ref()) }
     }
 
     #[inline(always)]
-    pub fn from_mut<'a, T: AsMut<Utf8CStr>>(mut value: T) -> &'a mut FsPath {
+    pub fn from_mut<T: AsMut<Utf8CStr> + ?Sized>(value: &mut T) -> &mut FsPath {
         unsafe { mem::transmute(value.as_mut()) }
     }
 }
@@ -568,7 +604,7 @@ macro_rules! impl_str_write {
         impl<$($g)*> AsMut<Utf8CStr> for $t {
             #[inline(always)]
             fn as_mut(&mut self) -> &mut Utf8CStr {
-                self
+                self.as_utf8_cstr_mut()
             }
         }
     )*}
@@ -597,10 +633,8 @@ macro_rules! impl_str_buf {
             }
             #[inline(always)]
             fn clear(&mut self) {
-                unsafe {
-                    self.mut_buf()[0] = b'\0';
-                    self.set_len(0);
-                }
+                self.buf[0] = b'\0';
+                self.used = 0;
             }
         }
     )*}

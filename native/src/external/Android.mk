@@ -1,11 +1,5 @@
 LOCAL_PATH := $(call my-dir)
 
-# Header only library
-include $(CLEAR_VARS)
-LOCAL_MODULE:= libphmap
-LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/parallel-hashmap
-include $(BUILD_STATIC_LIBRARY)
-
 # libxz.a
 include $(CLEAR_VARS)
 LOCAL_MODULE:= libxz
@@ -397,3 +391,7 @@ include $(BUILD_STATIC_LIBRARY)
 CWD := $(LOCAL_PATH)
 include $(CWD)/system_properties/Android.mk
 include $(CWD)/libcxx/Android.mk
+
+ifdef B_CRT0
+include $(CWD)/crt0/Android.mk
+endif

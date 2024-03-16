@@ -22,9 +22,6 @@
 [submodule "zlib"]
 	path = native/src/external/zlib
 	url = https://android.googlesource.com/platform/external/zlib
-[submodule "parallel-hashmap"]
-	path = native/src/external/parallel-hashmap
-	url = https://github.com/greg7mdp/parallel-hashmap.git
 [submodule "zopfli"]
 	path = native/src/external/zopfli
 	url = https://github.com/google/zopfli.git
@@ -37,6 +34,9 @@
 [submodule "system_properties"]
 	path = native/src/external/system_properties
 	url = https://github.com/topjohnwu/system_properties.git
+[submodule "crt0"]
+	path = native/src/external/crt0
+	url = https://github.com/topjohnwu/crt0.git
 [submodule "termux-elf-cleaner"]
 	path = tools/termux-elf-cleaner
 	url = https://github.com/termux/termux-elf-cleaner.git

@@ -11,7 +11,6 @@ LOCAL_MODULE := magisk
 LOCAL_STATIC_LIBRARIES := \
     libbase \
     libsystemproperties \
-    libphmap \
     liblsplt \
     libmagisk-rs
 
@@ -24,23 +23,22 @@ LOCAL_SRC_FILES := \
     core/db.cpp \
     core/package.cpp \
     core/scripting.cpp \
-    core/restorecon.cpp \
+    core/selinux.cpp \
     core/module.cpp \
     core/thread.cpp \
-    core/resetprop/resetprop.cpp \
     core/core-rs.cpp \
+    core/resetprop/resetprop.cpp \
     core/su/su.cpp \
     core/su/connect.cpp \
     core/su/pts.cpp \
     core/su/su_daemon.cpp \
-    zygisk/entry.cpp \
-    zygisk/main.cpp \
-    zygisk/utils.cpp \
-    zygisk/hook.cpp \
-    zygisk/memory.cpp \
-    zygisk/deny/cli.cpp \
-    zygisk/deny/utils.cpp \
-    zygisk/deny/revert.cpp
+    core/zygisk/entry.cpp \
+    core/zygisk/main.cpp \
+    core/zygisk/module.cpp \
+    core/zygisk/hook.cpp \
+    core/deny/cli.cpp \
+    core/deny/utils.cpp \
+    core/deny/revert.cpp
 
 LOCAL_LDLIBS := -llog
 LOCAL_LDFLAGS := -Wl,--dynamic-list=src/exported_sym.txt
@@ -57,12 +55,6 @@ LOCAL_SRC_FILES := init/preload.c
 LOCAL_STRIP_MODE := --strip-all
 include $(BUILD_SHARED_LIBRARY)
 
-include $(CLEAR_VARS)
-LOCAL_MODULE := zygisk-ld
-LOCAL_SRC_FILES := zygisk/loader.c
-LOCAL_STRIP_MODE := --strip-all
-include $(BUILD_SHARED_LIBRARY)
-
 endif
 
 ifdef B_INIT
@@ -71,7 +63,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := magiskinit
 LOCAL_STATIC_LIBRARIES := \
     libbase \
-    libcompat \
     libpolicy \
     libxz \
     libinit-rs
@@ -85,6 +76,13 @@ LOCAL_SRC_FILES := \
     init/selinux.cpp \
     init/init-rs.cpp
 
+LOCAL_LDFLAGS := -static -T src/lto_fix.lds
+
+ifdef B_CRT0
+LOCAL_STATIC_LIBRARIES += crt0
+LOCAL_LDFLAGS :=
+endif
+
 include $(BUILD_EXECUTABLE)
 
 endif
@@ -95,7 +93,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := magiskboot
 LOCAL_STATIC_LIBRARIES := \
     libbase \
-    libcompat \
     liblzma \
     liblz4 \
     libbz2 \
@@ -109,6 +106,14 @@ LOCAL_SRC_FILES := \
     boot/compress.cpp \
     boot/format.cpp \
     boot/boot-rs.cpp
+
+LOCAL_LDFLAGS := -static -T src/lto_fix.lds
+
+ifdef B_CRT0
+LOCAL_STATIC_LIBRARIES += crt0
+LOCAL_CFLAGS += -DUSE_MUSL_PRINTF
+LOCAL_LDFLAGS := -lm
+endif
 
 include $(BUILD_EXECUTABLE)
 

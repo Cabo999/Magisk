@@ -62,6 +62,8 @@ if shutil.which("sccache") is not None:
     os.environ["RUSTC_WRAPPER"] = "sccache"
     os.environ["NDK_CCACHE"] = "sccache"
     os.environ["CARGO_INCREMENTAL"] = "0"
+if shutil.which("ccache") is not None:
+    os.environ["NDK_CCACHE"] = "ccache"
 
 cpu_count = multiprocessing.cpu_count()
 os_name = platform.system().lower()
@@ -187,15 +189,17 @@ def load_config(args):
 
     # Default values
     config["version"] = commit_hash
+    config["versionCode"] = 1000000
     config["outdir"] = "out"
 
     # Load prop files
     if op.exists(args.config):
         config.update(parse_props(args.config))
 
-    for key, value in parse_props("gradle.properties").items():
-        if key.startswith("magisk."):
-            config[key[7:]] = value
+    if op.exists("gradle.properties"):
+        for key, value in parse_props("gradle.properties").items():
+            if key.startswith("magisk."):
+                config[key[7:]] = value
 
     try:
         config["versionCode"] = int(config["versionCode"])
@@ -242,7 +246,7 @@ def run_ndk_build(flags):
         error("Build binary failed!")
     os.chdir("..")
     for arch in archs:
-        for tgt in support_targets + ["libinit-ld.so", "libzygisk-ld.so"]:
+        for tgt in support_targets + ["libinit-ld.so"]:
             source = op.join("native", "libs", arch, tgt)
             target = op.join("native", "out", arch, tgt)
             mv(source, target)
@@ -252,7 +256,7 @@ def run_cargo(cmds, triple="aarch64-linux-android"):
     env = os.environ.copy()
     env["PATH"] = f'{rust_bin}{os.pathsep}{env["PATH"]}'
     env["CARGO_BUILD_RUSTC"] = op.join(rust_bin, "rustc" + EXE_EXT)
-    env["RUSTFLAGS"] = "-Clinker-plugin-lto"
+    env["RUSTFLAGS"] = f"-Clinker-plugin-lto -Zthreads={min(8, cpu_count)}"
     env["TARGET_CC"] = op.join(llvm_bin, "clang" + EXE_EXT)
     env["TARGET_CFLAGS"] = f"--target={triple}23"
     return execv([cargo, *cmds], env)
@@ -270,10 +274,7 @@ def run_cargo_build(args):
         return
 
     # Start building the actual build commands
-    cmds = ["build"]
-    for target in targets:
-        cmds.append("-p")
-        cmds.append(target)
+    cmds = ["build", "-p", ""]
     rust_out = "debug"
     if args.release:
         cmds.append("-r")
@@ -289,9 +290,12 @@ def run_cargo_build(args):
             "thumbv7neon-linux-androideabi" if triple.startswith("armv7") else triple
         )
         cmds[-1] = rust_triple
-        proc = run_cargo(cmds, triple)
-        if proc.returncode != 0:
-            error("Build binary failed!")
+
+        for target in targets:
+            cmds[2] = target
+            proc = run_cargo(cmds, triple)
+            if proc.returncode != 0:
+                error("Build binary failed!")
 
         arch_out = op.join(native_out, arch)
         mkdir(arch_out)
@@ -338,9 +342,6 @@ def dump_bin_header(args):
         preload = op.join("native", "out", arch, "libinit-ld.so")
         with open(preload, "rb") as src:
             text = binary_dump(src, "init_ld_xz")
-        preload = op.join("native", "out", arch, "libzygisk-ld.so")
-        with open(preload, "rb") as src:
-            text += binary_dump(src, "zygisk_ld", compressor=lambda x: x)
         write_if_diff(op.join(native_gen_path, f"{arch}_binaries.h"), text)
 
 
@@ -391,15 +392,13 @@ def build_binary(args):
     flag = ""
     clean = False
 
-    if "magisk" in args.target or "magiskinit" in args.target:
-        flag += " B_PRELOAD=1"
+    if "magisk" in args.target:
+        flag += " B_MAGISK=1"
+        clean = True
 
     if "magiskpolicy" in args.target:
         flag += " B_POLICY=1"
         clean = True
-
-    if "test" in args.target:
-        flag += " B_TEST=1"
 
     if "magiskinit" in args.target:
         flag += " B_PRELOAD=1"
@@ -407,25 +406,21 @@ def build_binary(args):
     if "resetprop" in args.target:
         flag += " B_PROP=1"
 
+    if flag:
+        run_ndk_build(flag)
+
+    flag = ""
+
+    if "magiskinit" in args.target:
+        # magiskinit embeds preload.so
+        dump_bin_header(args)
+        flag += " B_INIT=1"
+
     if "magiskboot" in args.target:
         flag += " B_BOOT=1"
 
     if flag:
-        run_ndk_build(flag)
-
-    # magiskinit and magisk embeds preload.so
-
-    flag = ""
-
-    if "magisk" in args.target:
-        flag += " B_MAGISK=1"
-        clean = True
-
-    if "magiskinit" in args.target:
-        flag += " B_INIT=1"
-
-    if flag:
-        dump_bin_header(args)
+        flag += " B_CRT0=1"
         run_ndk_build(flag)
 
     if clean:
@@ -556,27 +551,6 @@ def setup_ndk(args):
 
     rm_rf(ndk_path)
     mv(ondk_path, ndk_path)
-
-    header("* Patching static libs")
-    for target in ["arm-linux-androideabi", "i686-linux-android"]:
-        arch = target.split("-")[0]
-        lib_dir = op.join(
-            ndk_path,
-            "toolchains",
-            "llvm",
-            "prebuilt",
-            f"{os_name}-x86_64",
-            "sysroot",
-            "usr",
-            "lib",
-            f"{target}",
-            "23",
-        )
-        if not op.exists(lib_dir):
-            continue
-        src_dir = op.join("tools", "ndk-bins", arch)
-        rm(op.join(src_dir, ".DS_Store"))
-        shutil.copytree(src_dir, lib_dir, copy_function=cp, dirs_exist_ok=True)
 
 
 def push_files(args, script):

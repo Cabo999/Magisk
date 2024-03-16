@@ -10,16 +10,20 @@ import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.arch.AsyncLoadViewModel
+import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.Info
 import com.topjohnwu.magisk.core.data.magiskdb.PolicyDao
 import com.topjohnwu.magisk.core.di.AppContext
-import com.topjohnwu.magisk.core.di.ServiceLocator
 import com.topjohnwu.magisk.core.ktx.getLabel
 import com.topjohnwu.magisk.core.model.su.SuPolicy
 import com.topjohnwu.magisk.core.utils.currentLocale
-import com.topjohnwu.magisk.databinding.*
+import com.topjohnwu.magisk.databinding.MergeObservableList
+import com.topjohnwu.magisk.databinding.RvItem
+import com.topjohnwu.magisk.databinding.bindExtra
+import com.topjohnwu.magisk.databinding.diffList
+import com.topjohnwu.magisk.databinding.set
 import com.topjohnwu.magisk.dialog.SuperuserRevokeDialog
-import com.topjohnwu.magisk.events.BiometricEvent
+import com.topjohnwu.magisk.events.AuthEvent
 import com.topjohnwu.magisk.events.SnackbarEvent
 import com.topjohnwu.magisk.utils.asText
 import com.topjohnwu.magisk.view.TextItem
@@ -113,10 +117,8 @@ class SuperuserViewModel(
             }
         }
 
-        if (ServiceLocator.biometrics.isEnabled) {
-            BiometricEvent {
-                onSuccess { updateState() }
-            }.publish()
+        if (Config.userAuth) {
+            AuthEvent { updateState() }.publish()
         } else {
             SuperuserRevokeDialog(item.title) { updateState() }.show()
         }
@@ -168,10 +170,8 @@ class SuperuserViewModel(
             }
         }
 
-        if (ServiceLocator.biometrics.isEnabled) {
-            BiometricEvent {
-                onSuccess { updateState() }
-            }.publish()
+        if (Config.userAuth) {
+            AuthEvent { updateState() }.publish()
         } else {
             updateState()
         }

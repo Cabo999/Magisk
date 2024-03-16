@@ -8,13 +8,6 @@
 
 using namespace std;
 
-const argument &all_xperm() {
-    static argument arg;
-    if (arg.first.empty())
-        arg.first.push_back(nullptr);
-    return arg;
-}
-
 static const char *type_msg_1 =
 R"EOF("allow *source_type *target_type *class *perm_set"
 "deny *source_type *target_type *class *perm_set"
@@ -417,19 +410,20 @@ static bool parse_pattern_9(const Func &fn, const char *action, char *stmt) {
 else if (strcmp(name, action) == 0) {   \
     auto __fn = [&](auto && ...args){ return (fn)(args...); }; \
     if (!parse_pattern_##type(__fn, name, remain))             \
-        LOGW("Syntax error in '%.*s'\n\n%s\n", len, stmt, type_msg_##type); \
+        LOGW("Syntax error in '%.*s'\n\n%s\n", (int) stmt.length(), stmt.data(), type_msg_##type); \
 }
 
 #define add_action(act, type) add_action_func(#act, type, act)
 
-void sepolicy::parse_statement(const char *stmt, int len) {
+void sepolicy::parse_statement(rust::Str stmt) {
+    if (stmt.empty()) return;
     // strtok modify strings, create a copy
-    string cpy(stmt, len);
+    string cpy(stmt.data(), stmt.length());
 
     char *remain;
     char *action = strtok_r(cpy.data(), " ", &remain);
     if (remain == nullptr) {
-        LOGW("Syntax error in '%.*s'\n\n", len, stmt);
+        LOGW("Syntax error in '%.*s'\n\n", (int) stmt.length(), stmt.data());
         return;
     }
 

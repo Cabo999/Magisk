@@ -7,7 +7,6 @@
 #include <libgen.h>
 
 #include <base.hpp>
-#include <selinux.hpp>
 
 using namespace std;
 
@@ -79,6 +78,7 @@ void file_readline(bool trim, const char *file, const function<bool(string_view)
     if (auto fp = open_file(file, "re"))
         file_readline(trim, fp.get(), fn);
 }
+
 void file_readline(const char *file, const function<bool(string_view)> &fn) {
     file_readline(false, file, fn);
 }
@@ -190,7 +190,7 @@ sFILE make_file(FILE *fp) {
 }
 
 mmap_data::mmap_data(const char *name, bool rw) {
-    auto slice = rust::map_file(byte_view(name), rw);
+    auto slice = rust::map_file(name, rw);
     if (!slice.empty()) {
         _buf = slice.data();
         _sz = slice.size();

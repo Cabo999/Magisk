@@ -5,8 +5,7 @@
 
 #include <base.hpp>
 #include <flags.h>
-#include <selinux.hpp>
-#include <magisk.hpp>
+#include <consts.hpp>
 
 #include "init.hpp"
 
@@ -101,29 +100,6 @@ static dev_t setup_block() {
     return 0;
 }
 
-static void switch_root(const string &path) {
-    LOGD("Switch root to %s\n", path.data());
-    int root = xopen("/", O_RDONLY);
-    for (set<string, greater<>> mounts; auto &info : parse_mount_info("self")) {
-        if (info.target == "/" || info.target == path)
-            continue;
-        if (auto last_mount = mounts.upper_bound(info.target);
-                last_mount != mounts.end() && info.target.starts_with(*last_mount + '/')) {
-            continue;
-        }
-        mounts.emplace(info.target);
-        auto new_path = path + info.target;
-        xmkdir(new_path.data(), 0755);
-        xmount(info.target.data(), new_path.data(), nullptr, MS_MOVE, nullptr);
-    }
-    chdir(path.data());
-    xmount(path.data(), "/", nullptr, MS_MOVE, nullptr);
-    chroot(".");
-
-    LOGD("Cleaning rootfs\n");
-    frm_rf(root);
-}
-
 #define PREINITMNT MIRRDIR "/preinit"
 
 static void mount_preinit_dir(string preinit_dev) {
@@ -138,13 +114,11 @@ static void mount_preinit_dir(string preinit_dev) {
     xmkdir(PREINITMNT, 0);
     bool mounted = false;
     // First, find if it is already mounted
-    for (auto &info : parse_mount_info("self")) {
-        if (info.root == "/" && info.device == dev) {
-            // Already mounted, just bind mount
-            xmount(info.target.data(), PREINITMNT, nullptr, MS_BIND, nullptr);
-            mounted = true;
-            break;
-        }
+    std::string mnt_point;
+    if (rust::is_device_mounted(dev, mnt_point)) {
+        // Already mounted, just bind mount
+        xmount(mnt_point.data(), PREINITMNT, nullptr, MS_BIND, nullptr);
+        mounted = true;
     }
 
     // Since we are mounting the block device directly, make sure to ONLY mount the partitions
@@ -213,7 +187,7 @@ mount_root:
         }
     }
 
-    switch_root("/system_root");
+    rust::switch_root("/system_root");
 
     // Make dev writable
     xmount("tmpfs", "/dev", "tmpfs", 0, "mode=755");
@@ -223,10 +197,8 @@ mount_root:
     bool is_two_stage = access("/apex", F_OK) == 0;
     LOGD("is_two_stage: [%d]\n", is_two_stage);
 
-#if MAGISK_DEBUG
     // For API 28 AVD, it uses legacy SAR setup that requires
-    // special hacks in magiskinit to work properly. We do not
-    // necessarily want this enabled in production builds.
+    // special hacks in magiskinit to work properly.
     if (!is_two_stage && config->emulator) {
         avd_hack = true;
         // These values are hardcoded for API 28 AVD
@@ -236,7 +208,6 @@ mount_root:
         setup_block();
         xmount(blk_info.block_dev, "/vendor", "ext4", MS_RDONLY, nullptr);
     }
-#endif
 
     return is_two_stage;
 }
@@ -247,7 +218,7 @@ void BaseInit::exec_init() {
         if (xumount2(p.data(), MNT_DETACH) == 0)
             LOGD("Unmount [%s]\n", p.data());
     }
-    execv("/init", argv);
+    execve("/init", argv, environ);
     exit(1);
 }
 
